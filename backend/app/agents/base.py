@@ -2,7 +2,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 class AgentStatus(str, Enum):
@@ -81,6 +84,7 @@ class BaseAgent(ABC):
 
             if result.success:
                 self.status = AgentStatus.COMPLETED
+                logger.info(f"[{self.agent_id}] Completed in {elapsed:.0f}ms")
                 if event_callback:
                     await event_callback(
                         "agent:complete",
@@ -93,6 +97,7 @@ class BaseAgent(ABC):
                     )
             else:
                 self.status = AgentStatus.ERROR
+                logger.error(f"[{self.agent_id}] Failed: {result.error}")
                 if event_callback:
                     await event_callback(
                         "agent:error",
@@ -108,6 +113,7 @@ class BaseAgent(ABC):
         except Exception as e:
             elapsed = (time.time() - start_time) * 1000
             self.status = AgentStatus.ERROR
+            logger.exception(f"[{self.agent_id}] Exception: {e}")
             if event_callback:
                 await event_callback(
                     "agent:error",
