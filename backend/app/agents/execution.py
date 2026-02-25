@@ -26,6 +26,12 @@ MOCK_MODELS = {
 class ExecutionAgent(BaseAgent):
     def __init__(self):
         super().__init__("execution", "Execution Agent")
+        self._event_callback = None
+
+    async def run(self, context, event_callback=None):
+        """Override to capture event_callback for progress streaming."""
+        self._event_callback = event_callback
+        return await super().run(context, event_callback)
 
     async def execute(self, context: AgentContext) -> AgentResult:
         prompt = context.refined_prompt or context.original_prompt
@@ -63,7 +69,19 @@ class ExecutionAgent(BaseAgent):
     async def _meshy_generate(self, context: AgentContext, prompt: str) -> AgentResult:
         """Real 3D generation using Meshy API: text → 3D model directly."""
         try:
-            result = await meshy_client.text_to_3d(prompt)
+            async def on_meshy_progress(progress: int, status: str):
+                """Stream Meshy polling progress to the frontend."""
+                if self._event_callback:
+                    await self._event_callback(
+                        "agent:progress",
+                        {
+                            "agent_id": self.agent_id,
+                            "progress": min(progress, 95),
+                            "message": f"Generating 3D model... {progress}%",
+                        },
+                    )
+
+            result = await meshy_client.text_to_3d(prompt, on_progress=on_meshy_progress)
 
             model_url = result.get("model_url")
             thumbnail_url = result.get("thumbnail_url")

@@ -1,7 +1,10 @@
 import asyncio
-from typing import Optional
+import logging
+from typing import Callable, Optional
 import httpx
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 MESHY_BASE_URL = "https://api.meshy.ai"
@@ -19,13 +22,16 @@ class MeshyClient:
             "Content-Type": "application/json",
         }
 
-    async def text_to_3d(self, prompt: str) -> dict:
+    async def text_to_3d(
+        self, prompt: str, on_progress: Optional[Callable] = None
+    ) -> dict:
         """Generate a 3D model from text prompt using Meshy v2 API.
 
         Returns dict with keys: model_url, thumbnail_url
         """
         async with httpx.AsyncClient(timeout=60) as client:
             # Create text-to-3d preview task
+            logger.info(f"[Meshy] Creating text-to-3d task: {prompt[:80]}...")
             response = await client.post(
                 f"{MESHY_BASE_URL}/openapi/v2/text-to-3d",
                 headers=self._headers(),
@@ -43,9 +49,10 @@ class MeshyClient:
                     f"Meshy text-to-3d failed ({response.status_code}): {body}"
                 )
             task_id = response.json().get("result")
+            logger.info(f"[Meshy] Task created: {task_id}")
 
             # Poll for completion
-            return await self._poll_text_to_3d(task_id)
+            return await self._poll_text_to_3d(task_id, on_progress=on_progress)
 
     async def image_to_3d(self, image_url: str) -> dict:
         """Generate a 3D model from an image using Meshy v1 API.
@@ -75,11 +82,15 @@ class MeshyClient:
             return await self._poll_image_to_3d(task_id)
 
     async def _poll_text_to_3d(
-        self, task_id: str, max_wait: int = 300, interval: int = 5
+        self,
+        task_id: str,
+        max_wait: int = 300,
+        interval: int = 5,
+        on_progress: Optional[Callable] = None,
     ) -> dict:
         """Poll a text-to-3d task until completion."""
         url = f"{MESHY_BASE_URL}/openapi/v2/text-to-3d/{task_id}"
-        return await self._poll_task(url, max_wait, interval)
+        return await self._poll_task(url, max_wait, interval, on_progress)
 
     async def _poll_image_to_3d(
         self, task_id: str, max_wait: int = 300, interval: int = 5
@@ -88,7 +99,13 @@ class MeshyClient:
         url = f"{MESHY_BASE_URL}/openapi/v1/image-to-3d/{task_id}"
         return await self._poll_task(url, max_wait, interval)
 
-    async def _poll_task(self, url: str, max_wait: int, interval: int) -> dict:
+    async def _poll_task(
+        self,
+        url: str,
+        max_wait: int,
+        interval: int,
+        on_progress: Optional[Callable] = None,
+    ) -> dict:
         """Generic polling for Meshy tasks. Returns model_url + thumbnail_url."""
         elapsed = 0
         async with httpx.AsyncClient(timeout=30) as client:
@@ -99,6 +116,13 @@ class MeshyClient:
 
                 status = data.get("status")
                 progress = data.get("progress", 0)
+
+                logger.info(
+                    f"[Meshy] Poll: status={status}, progress={progress}%, elapsed={elapsed}s"
+                )
+
+                if on_progress:
+                    await on_progress(progress, status)
 
                 if status == "SUCCEEDED":
                     model_urls = data.get("model_urls", {})
