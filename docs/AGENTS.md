@@ -108,7 +108,14 @@ class AgentStatus(str, Enum):
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | Mock | `MOCK_3D=true` | Returns a sample GLB from KhronosGroup (2s simulated delay) |
-| Real | `MOCK_3D=false` | Calls Meshy API: text→image, then image→3D (1-5 min) |
+| Real | `MOCK_3D=false` | Calls Meshy API: text-to-3d preview → refine pipeline (3-5 min) |
+
+**Real mode — two-stage Meshy pipeline:**
+
+1. **Preview (0-50% progress):** Calls `POST /openapi/v2/text-to-3d` with `mode: "preview"` to generate an untextured mesh. The preview model URL is sent to the frontend mid-pipeline via an `agent:progress` event so the viewer can display it immediately.
+2. **Refine (50-100% progress):** Calls the same endpoint with `mode: "refine"` and `preview_task_id` plus `enable_pbr: true` to generate a fully textured model with PBR materials. If refine fails, the pipeline falls back to the preview model rather than failing entirely.
+
+All Meshy model URLs are proxied through `/api/proxy/model` to avoid CORS issues (Meshy's CDN does not set `Access-Control-Allow-Origin`).
 
 **Mock model selection:** Based on `context.subject`:
 - science/biology/chemistry → `BrainStem.glb`
@@ -119,9 +126,9 @@ class AgentStatus(str, Enum):
 ```json
 {
     "image_url": "https://...",
-    "model_url": "https://...DamagedHelmet.glb",
+    "model_url": "/api/proxy/model?url=https%3A%2F%2Fassets.meshy.ai%2F...",
     "format": "glb",
-    "mock": true
+    "mock": false
 }
 ```
 

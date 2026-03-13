@@ -118,6 +118,24 @@ DELETE /api/sessions/{session_id}
 
 ---
 
+### Proxy 3D Model
+
+Proxies a 3D model file from an external URL (e.g., Meshy's CDN) to avoid CORS issues. The response includes proper `Access-Control-Allow-Origin` headers.
+
+```
+GET /api/proxy/model?url={encoded_url}
+```
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string (URL-encoded) | Yes | The original model file URL to proxy |
+
+**Response:** Streams the binary model file with `Content-Type: model/gltf-binary` (or appropriate type).
+
+**Why:** Meshy's CDN (`assets.meshy.ai`) does not return CORS headers, so `<model-viewer>` in the browser cannot fetch GLB files directly. This endpoint fetches the file server-side and serves it with CORS headers.
+
+---
+
 ## Server-Sent Events (SSE) Stream
 
 ### Subscribe to Pipeline Events
@@ -169,7 +187,7 @@ Emitted during agent execution to report intermediate progress.
 
 ```
 event: agent:progress
-data: {"agent_id": "execution", "progress": 50, "message": "Generating image from prompt..."}
+data: {"agent_id": "execution", "progress": 50, "message": "Preview ready, refining textures...", "model_url": "/api/proxy/model?url=..."}
 ```
 
 | Field | Type | Description |
@@ -177,6 +195,7 @@ data: {"agent_id": "execution", "progress": 50, "message": "Generating image fro
 | `agent_id` | string | One of: `pedagogical`, `execution`, `safeguard`, `tutor` |
 | `progress` | number | 0-100 percentage |
 | `message` | string | Human-readable status message |
+| `model_url` | string | *(Execution agent only, optional)* Proxied URL of the preview model, sent at ~50% so the viewer can display it while refine runs |
 
 ---
 

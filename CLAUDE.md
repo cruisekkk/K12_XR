@@ -43,7 +43,7 @@ K12_XR/
 The core of the system is a sequential agent pipeline defined in `backend/app/orchestrator/pipeline.py`:
 
 1. **Pedagogical Agent** (`agents/pedagogical.py`) — Refines a teacher's simple prompt into a detailed, curriculum-aligned prompt with learning objectives, key features, and grade-appropriate complexity. Uses LLM.
-2. **Execution Agent** (`agents/execution.py`) — Generates a 3D model. In mock mode (`MOCK_3D=true`) returns sample GLB files; in production calls Meshy API (text→image→3D).
+2. **Execution Agent** (`agents/execution.py`) — Generates a 3D model. In mock mode (`MOCK_3D=true`) returns sample GLB files; in production calls Meshy API two-stage pipeline (text-to-3d preview → refine with PBR textures, ~3-5 min). Preview model shown at 50% while refine runs; falls back to preview if refine fails. All Meshy URLs proxied through `/api/proxy/model` to avoid CORS.
 3. **Safeguard Agent** (`agents/safeguard.py`) — Validates generated content against K-12 safety protocols (age-appropriateness, accuracy, bias, safety). If content fails, the pipeline retries Execution+Safeguard up to `max_safety_retries` times.
 4. **Tutor Agent** (`agents/tutor.py`) — Enriches the scene with educational annotations, vocabulary, quiz questions, key facts, and fun facts. Uses LLM + web search (Tavily).
 
@@ -130,5 +130,7 @@ npm run build                     # Production build (verify before deploy)
 
 - `@google/model-viewer` npm package breaks Next.js SSR builds — use CDN script instead
 - `next-auth` v5 beta uses `NextAuth().handlers` pattern, not the v4 `NextAuth()` export-as-handler pattern
-- Meshy API calls are async and can take 1-5 minutes; the polling logic is in `services/meshy_client.py`
+- Meshy API calls are async: preview ~70s + refine ~135s (total ~3-5 min). Polling logic in `services/meshy_client.py`. The 99% progress stage can stall for 30-40s before transitioning to SUCCEEDED — this is normal Meshy behavior.
+- Meshy's CDN (`assets.meshy.ai`) does not set CORS headers — all model URLs must be proxied through `/api/proxy/model`
 - The SSE endpoint sends a `None` sentinel to signal stream end; frontend must handle this gracefully
+- Railway free plan requires `sleepApplication = true` in `railway.toml` for serverless mode

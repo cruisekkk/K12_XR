@@ -98,7 +98,11 @@ For the demo/prototype phase, in-memory storage eliminates database setup comple
 
 ### Why mock 3D mode?
 
-Meshy API calls cost money and take 1-5 minutes per generation. Mock mode (`MOCK_3D=true`) returns sample GLB files instantly, enabling full pipeline testing (all 4 agents run, SSE events stream, frontend renders) without API costs or wait times.
+Meshy API calls cost money and take 3-5 minutes per generation (preview ~70s + refine ~135s). Mock mode (`MOCK_3D=true`) returns sample GLB files instantly, enabling full pipeline testing (all 4 agents run, SSE events stream, frontend renders) without API costs or wait times.
+
+### Why proxy Meshy model URLs?
+
+Meshy's CDN (`assets.meshy.ai`) does not set `Access-Control-Allow-Origin` headers. The browser's `<model-viewer>` component cannot fetch GLB files cross-origin. The backend's `/api/proxy/model` endpoint fetches the model server-side and serves it with CORS headers. All Meshy model URLs (both preview and refined) are rewritten to proxy URLs before being sent to the frontend.
 
 ## Data Flow
 

@@ -21,7 +21,8 @@ The foundation is built and functional end-to-end in mock mode.
 
 Goal: Connect real 3D generation, improve UI quality, and deploy to production.
 
-- [ ] **Meshy API integration** — Test the live text→image→3D pipeline with `MOCK_3D=false`
+- [x] **Meshy API integration** — Two-stage text-to-3d pipeline: preview (untextured mesh) → refine (PBR textured model). Preview model shown at 50% while refine runs. Graceful fallback if refine fails. All model URLs proxied through backend to avoid CORS.
+- [x] **Production deployment** — Frontend on Vercel, backend on Railway (serverless mode). CORS configured for cross-origin SSE + API.
 - [ ] **Image preview step** — Show the intermediate generated image before 3D conversion; allow teacher to approve/reject before costly 3D generation
 - [ ] **Model caching** — Cache generated GLB models (CDN or object storage) so repeated requests don't regenerate
 - [ ] **Refined prompt preview** — Show the Pedagogical Agent's refined prompt to teachers with an "Edit & Approve" step before generation
