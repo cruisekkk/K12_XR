@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Optional
 
+from urllib.parse import quote
+
 from app.agents.base import BaseAgent, AgentContext, AgentResult
 from app.services.meshy_client import meshy_client
 from app.config import settings
@@ -90,6 +92,8 @@ class ExecutionAgent(BaseAgent):
             preview_task_id = preview.get("preview_task_id")
             thumbnail_url = preview.get("thumbnail_url")
 
+            logger.info(f"[Execution] Preview result: model_url={preview_model_url}, thumbnail={thumbnail_url}")
+
             if not preview_model_url:
                 return AgentResult(
                     success=False,
@@ -98,6 +102,7 @@ class ExecutionAgent(BaseAgent):
                 )
 
             # --- Stage 2: Refine (50-100%) ---
+            proxied_preview = f"/api/proxy/model?url={quote(preview_model_url, safe='')}"
             if self._event_callback:
                 await self._event_callback(
                     "agent:progress",
@@ -105,7 +110,7 @@ class ExecutionAgent(BaseAgent):
                         "agent_id": self.agent_id,
                         "progress": 50,
                         "message": "Preview ready, refining textures...",
-                        "model_url": preview_model_url,
+                        "model_url": proxied_preview,
                     },
                 )
 
@@ -127,7 +132,7 @@ class ExecutionAgent(BaseAgent):
                 )
                 model_url = refine.get("model_url") or preview_model_url
                 thumbnail_url = refine.get("thumbnail_url") or thumbnail_url
-                logger.info("[Execution] Refine succeeded, using textured model")
+                logger.info(f"[Execution] Refine succeeded: model_url={model_url}")
             except Exception as e:
                 logger.warning(f"[Execution] Refine failed, falling back to preview: {e}")
                 model_url = preview_model_url
