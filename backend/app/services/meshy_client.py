@@ -25,9 +25,9 @@ class MeshyClient:
     async def text_to_3d(
         self, prompt: str, on_progress: Optional[Callable] = None
     ) -> dict:
-        """Generate a 3D model from text prompt using Meshy v2 API.
+        """Generate a 3D model preview from text prompt using Meshy v2 API.
 
-        Returns dict with keys: model_url, thumbnail_url
+        Returns dict with keys: model_url, thumbnail_url, preview_task_id
         """
         async with httpx.AsyncClient(timeout=60) as client:
             # Create text-to-3d preview task
@@ -52,7 +52,39 @@ class MeshyClient:
             logger.info(f"[Meshy] Task created: {task_id}")
 
             # Poll for completion
-            return await self._poll_text_to_3d(task_id, on_progress=on_progress)
+            result = await self._poll_text_to_3d(task_id, on_progress=on_progress)
+            result["preview_task_id"] = task_id
+            return result
+
+    async def refine_text_to_3d(
+        self, preview_task_id: str, on_progress: Optional[Callable] = None
+    ) -> dict:
+        """Refine a preview task to generate textured model with PBR materials.
+
+        Returns dict with keys: model_url, thumbnail_url
+        """
+        async with httpx.AsyncClient(timeout=60) as client:
+            logger.info(f"[Meshy] Creating refine task for preview: {preview_task_id}")
+            response = await client.post(
+                f"{MESHY_BASE_URL}/openapi/v2/text-to-3d",
+                headers=self._headers(),
+                json={
+                    "mode": "refine",
+                    "preview_task_id": preview_task_id,
+                    "enable_pbr": True,
+                },
+            )
+            if not response.is_success:
+                body = response.text
+                raise Exception(
+                    f"Meshy refine failed ({response.status_code}): {body}"
+                )
+            refine_task_id = response.json().get("result")
+            logger.info(f"[Meshy] Refine task created: {refine_task_id}")
+
+            return await self._poll_text_to_3d(
+                refine_task_id, max_wait=600, on_progress=on_progress
+            )
 
     async def image_to_3d(self, image_url: str) -> dict:
         """Generate a 3D model from an image using Meshy v1 API.

@@ -1,9 +1,12 @@
 import asyncio
+import logging
 from typing import Optional
 
 from app.agents.base import BaseAgent, AgentContext, AgentResult
 from app.services.meshy_client import meshy_client
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # Sample models for mock mode - publicly available GLB files
@@ -67,31 +70,67 @@ class ExecutionAgent(BaseAgent):
         )
 
     async def _meshy_generate(self, context: AgentContext, prompt: str) -> AgentResult:
-        """Real 3D generation using Meshy API: text → 3D model directly."""
+        """Real 3D generation using Meshy API: preview → refine pipeline."""
         try:
-            async def on_meshy_progress(progress: int, status: str):
-                """Stream Meshy polling progress to the frontend."""
+            # --- Stage 1: Preview (0-50%) ---
+            async def on_preview_progress(progress: int, status: str):
                 if self._event_callback:
+                    scaled = min(progress, 100) // 2  # 0-50%
                     await self._event_callback(
                         "agent:progress",
                         {
                             "agent_id": self.agent_id,
-                            "progress": min(progress, 95),
-                            "message": f"Generating 3D model... {progress}%",
+                            "progress": scaled,
+                            "message": f"Generating preview... {progress}%",
                         },
                     )
 
-            result = await meshy_client.text_to_3d(prompt, on_progress=on_meshy_progress)
+            preview = await meshy_client.text_to_3d(prompt, on_progress=on_preview_progress)
+            preview_model_url = preview.get("model_url")
+            preview_task_id = preview.get("preview_task_id")
+            thumbnail_url = preview.get("thumbnail_url")
 
-            model_url = result.get("model_url")
-            thumbnail_url = result.get("thumbnail_url")
-
-            if not model_url:
+            if not preview_model_url:
                 return AgentResult(
                     success=False,
                     agent_id=self.agent_id,
                     error="Meshy returned no model URL",
                 )
+
+            # --- Stage 2: Refine (50-100%) ---
+            if self._event_callback:
+                await self._event_callback(
+                    "agent:progress",
+                    {
+                        "agent_id": self.agent_id,
+                        "progress": 50,
+                        "message": "Preview ready, refining textures...",
+                        "model_url": preview_model_url,
+                    },
+                )
+
+            try:
+                async def on_refine_progress(progress: int, status: str):
+                    if self._event_callback:
+                        scaled = 50 + min(progress, 100) // 2  # 50-100%
+                        await self._event_callback(
+                            "agent:progress",
+                            {
+                                "agent_id": self.agent_id,
+                                "progress": scaled,
+                                "message": f"Refining textures... {progress}%",
+                            },
+                        )
+
+                refine = await meshy_client.refine_text_to_3d(
+                    preview_task_id, on_progress=on_refine_progress
+                )
+                model_url = refine.get("model_url") or preview_model_url
+                thumbnail_url = refine.get("thumbnail_url") or thumbnail_url
+                logger.info("[Execution] Refine succeeded, using textured model")
+            except Exception as e:
+                logger.warning(f"[Execution] Refine failed, falling back to preview: {e}")
+                model_url = preview_model_url
 
             return AgentResult(
                 success=True,
